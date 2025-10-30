@@ -1,7 +1,7 @@
-
 import React from 'react';
 import { StudyPlan, Section, SessionRecord } from '../types';
 import LoadingSpinner from './icons/LoadingSpinner';
+import DownloadIcon from './icons/DownloadIcon';
 
 interface StudyPlanViewProps {
   plan: StudyPlan;
@@ -11,6 +11,7 @@ interface StudyPlanViewProps {
   onBackToPlanList: () => void;
   loadingQuiz: boolean;
   selectedSection: Section | null;
+  onExportPlan: () => void;
 }
 
 const getDifficultyClass = (difficulty: 'Beginner' | 'Intermediate' | 'Advanced') => {
@@ -68,7 +69,7 @@ const getAvgGrade = (gradedAnswers: SessionRecord['gradedAnswers']) => {
     return 'F';
 }
 
-const StudyPlanView: React.FC<StudyPlanViewProps> = ({ plan, sessionHistory, onStartQuiz, onReviewSession, onBackToPlanList, loadingQuiz, selectedSection }) => {
+const StudyPlanView: React.FC<StudyPlanViewProps> = ({ plan, sessionHistory, onStartQuiz, onReviewSession, onBackToPlanList, loadingQuiz, selectedSection, onExportPlan }) => {
   const attemptedSections = new Set(sessionHistory.map(s => s.section.title));
   const progressPercent = plan.sections.length > 0 ? (attemptedSections.size / plan.sections.length) * 100 : 0;
 
@@ -102,8 +103,21 @@ const StudyPlanView: React.FC<StudyPlanViewProps> = ({ plan, sessionHistory, onS
       <div className="max-w-4xl mx-auto">
         <header className="mb-8">
           <button onClick={onBackToPlanList} className="text-sm text-brand-primary hover:underline mb-4">&larr; Back to All Plans</button>
-          <h1 className="text-4xl font-bold text-white">{plan.topic}</h1>
-          <p className="text-slate-400">{plan.summary}</p>
+          <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
+              <div className="flex-grow">
+                  <h1 className="text-4xl font-bold text-white">{plan.topic}</h1>
+                  <p className="text-slate-400 mt-1">{plan.summary}</p>
+              </div>
+              <button
+                onClick={onExportPlan}
+                title="Export this plan"
+                aria-label="Export this study plan"
+                className="flex-shrink-0 inline-flex items-center justify-center px-4 py-2 border border-slate-600 text-sm font-medium rounded-md shadow-sm text-white bg-slate-700 hover:bg-slate-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-900 focus:ring-brand-primary"
+              >
+                <DownloadIcon className="w-5 h-5 mr-2" />
+                Export Plan
+              </button>
+          </div>
         </header>
 
         <div className="mb-8 p-6 bg-slate-800 rounded-xl border border-slate-700 animate-slide-in-up">

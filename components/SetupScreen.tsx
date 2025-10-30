@@ -1,6 +1,9 @@
 import React, { useState } from 'react';
 import LoadingSpinner from './icons/LoadingSpinner';
 import { StudyPlan, SessionRecord } from '../types';
+import UploadIcon from './icons/UploadIcon';
+import DownloadIcon from './icons/DownloadIcon';
+
 
 interface SetupScreenProps {
   studyPlans: StudyPlan[];
@@ -10,6 +13,8 @@ interface SetupScreenProps {
   loading: boolean;
   sessionHistory: SessionRecord[];
   onResetApiKey: () => void;
+  onExportAllData: () => void;
+  onImportData: () => void;
 }
 
 const gradeValueMapping: { [key: string]: number } = {
@@ -48,7 +53,7 @@ const getGradeColorClass = (grade: string) => {
   return 'bg-red-500';
 }
 
-const SetupScreen: React.FC<SetupScreenProps> = ({ studyPlans, onSelectPlan, onDeletePlan, onStart, loading, sessionHistory, onResetApiKey }) => {
+const SetupScreen: React.FC<SetupScreenProps> = ({ studyPlans, onSelectPlan, onDeletePlan, onStart, loading, sessionHistory, onResetApiKey, onExportAllData, onImportData }) => {
   const [topic, setTopic] = useState('');
   const [context, setContext] = useState('');
 
@@ -60,17 +65,38 @@ const SetupScreen: React.FC<SetupScreenProps> = ({ studyPlans, onSelectPlan, onD
   };
 
   return (
-    <div className="min-h-screen bg-slate-900 text-white flex flex-col items-center justify-center p-4 sm:p-6 lg:p-8 animate-fade-in relative">
+    <div className="min-h-screen bg-slate-900 text-white p-4 sm:p-6 lg:p-8 animate-fade-in relative">
       <div className="absolute top-4 right-4 text-xs text-slate-500">
           API Key is set.{' '}
           <button onClick={onResetApiKey} className="text-brand-primary hover:underline">
               Change
           </button>
       </div>
-      <div className="w-full max-w-4xl mx-auto space-y-12">
+      <div className="w-full max-w-4xl mx-auto space-y-12 mt-16 sm:mt-20">
         {/* Existing Plans List */}
         <div className="animate-slide-in-up">
-          <h2 className="text-2xl font-semibold text-slate-300 border-b border-slate-700 pb-2 mb-6">Your Study Plans</h2>
+          <div className="flex flex-wrap justify-between items-center gap-x-4 gap-y-2 border-b border-slate-700 pb-2 mb-6">
+            <h2 className="text-2xl font-semibold text-slate-300">Your Study Plans</h2>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={onImportData}
+                title="Import data from a file"
+                className="inline-flex items-center px-3 py-1.5 border border-slate-600 text-xs font-medium rounded-md text-slate-300 bg-slate-700 hover:bg-slate-600 transition-colors"
+              >
+                <UploadIcon className="w-4 h-4 mr-1.5" />
+                Import
+              </button>
+              <button
+                onClick={onExportAllData}
+                disabled={studyPlans.length === 0}
+                title="Export all plans and history"
+                className="inline-flex items-center px-3 py-1.5 border border-slate-600 text-xs font-medium rounded-md text-slate-300 bg-slate-700 hover:bg-slate-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <DownloadIcon className="w-4 h-4 mr-1.5" />
+                Export All
+              </button>
+            </div>
+          </div>
           {studyPlans.length > 0 ? (
             <div className="space-y-4">
               {studyPlans.map((plan) => {
