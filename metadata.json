@@ -1,0 +1,5 @@
+{
+  "name": "Socratic Tutor: AI Interview Prep",
+  "description": "An offline-first, AI-powered study application for interview preparation. Generate study plans from topics or job descriptions, answer tailored questions, and receive detailed, Socratic-style feedback from Gemini to deepen your understanding.",
+  "requestFramePermissions": []
+}
