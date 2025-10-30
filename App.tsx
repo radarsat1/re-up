@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { StudyPlan, Section, QuizSession, GradedAnswer, SessionRecord } from './types';
@@ -10,10 +9,12 @@ import StudyPlanView from './components/StudyPlanView';
 import QuizView from './components/QuizView';
 import FeedbackView from './components/FeedbackView';
 import LoadingSpinner from './components/icons/LoadingSpinner';
+import ApiKeySetupScreen from './components/ApiKeySetupScreen';
 
 type AppState = 'setup' | 'study_plan' | 'quiz' | 'feedback' | 'loading_plan';
 
 function App() {
+  const [apiKey, setApiKey] = useLocalStorage<string | null>('geminiApiKey', null);
   const [appState, setAppState] = useState<AppState>('setup');
   const [loading, setLoading] = useState(false);
   
@@ -31,26 +32,29 @@ function App() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (activePlan) {
-      setAppState('study_plan');
-    } else {
-      setAppState('setup');
+    if (apiKey) {
+      if (activePlan) {
+        setAppState('study_plan');
+      } else {
+        setAppState('setup');
+      }
     }
-  }, [activePlanId, activePlan]);
+  }, [apiKey, activePlanId, activePlan]);
   
   const handleStart = async (topic: string, context: string) => {
+    if (!apiKey) return;
     setLoading(true);
     setAppState('loading_plan');
     setError(null);
     try {
-      const newPlan = await generateStudyPlan(topic, context);
+      const newPlan = await generateStudyPlan(apiKey, topic, context);
       const planWithId = { ...newPlan, id: uuidv4() };
       setStudyPlans(prev => [...prev, planWithId]);
       setActivePlanId(planWithId.id);
       setAppState('study_plan');
     } catch (err) {
       console.error("Failed to generate study plan:", err);
-      setError("Sorry, we couldn't create a study plan. This could be due to a missing/invalid API key or a network issue. Please ensure your API_KEY is configured and try again.");
+      setError("Sorry, we couldn't create a study plan. This could be due to an invalid API key or a network issue. Please check your key and try again.");
       setAppState('setup');
     } finally {
       setLoading(false);
@@ -79,12 +83,12 @@ function App() {
   };
 
   const handleStartQuiz = async (section: Section) => {
-    if (!activePlan) return;
+    if (!activePlan || !apiKey) return;
     setLoadingQuiz(true);
     setSelectedSectionForQuiz(section);
     setError(null);
     try {
-      const questions = await generateQuestions(section.title, activePlan.topic);
+      const questions = await generateQuestions(apiKey, section.title, activePlan.topic);
       const newSession: QuizSession = {
         id: uuidv4(),
         section,
@@ -102,7 +106,7 @@ function App() {
   };
   
   const handleFinishQuiz = async (userAnswers: string[]) => {
-    if (!activeQuizSession || !activePlan) return;
+    if (!activeQuizSession || !activePlan || !apiKey) return;
     setLoading(true);
     setGradingProgress({ current: 0, total: activeQuizSession.questions.length });
     setError(null);
@@ -113,9 +117,8 @@ function App() {
         setGradingProgress({ current: i + 1, total: activeQuizSession.questions.length });
         const question = activeQuizSession.questions[i];
         const userAnswer = userAnswers[i];
-        const gradeResult = await gradeAnswer(question.question, userAnswer);
+        const gradeResult = await gradeAnswer(apiKey, question.question, userAnswer);
         
-        // FIX: Solves the original TypeScript error by explicitly constructing the GradedAnswer object.
         gradedAnswers.push({
           question: question.question,
           userAnswer,
@@ -152,6 +155,14 @@ function App() {
     }
   };
   
+  const handleResetApiKey = () => {
+    setApiKey(null);
+  };
+
+  if (!apiKey) {
+    return <ApiKeySetupScreen onSave={setApiKey} loading={loading} />;
+  }
+
   const renderContent = () => {
     if (error) {
       return (
@@ -172,7 +183,7 @@ function App() {
         return <div className="min-h-screen bg-slate-900 flex flex-col gap-4 items-center justify-center text-white"><LoadingSpinner className="w-12 h-12" /><p className="text-xl">Building your study plan...</p></div>;
       
       case 'study_plan':
-        if (!activePlan) return <SetupScreen studyPlans={studyPlans} onSelectPlan={handleSelectPlan} onDeletePlan={handleDeletePlan} onStart={handleStart} loading={loading} sessionHistory={sessionHistory} />;
+        if (!activePlan) return <SetupScreen studyPlans={studyPlans} onSelectPlan={handleSelectPlan} onDeletePlan={handleDeletePlan} onStart={handleStart} loading={loading} sessionHistory={sessionHistory} onResetApiKey={handleResetApiKey} />;
         return <StudyPlanView 
           plan={activePlan} 
           sessionHistory={sessionHistory.filter(s => s.planId === activePlanId)}
@@ -222,6 +233,7 @@ function App() {
           onStart={handleStart} 
           loading={loading}
           sessionHistory={sessionHistory}
+          onResetApiKey={handleResetApiKey}
         />;
     }
   };
