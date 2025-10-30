@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { StudyPlan, Section, SessionRecord } from '../types';
 import LoadingSpinner from './icons/LoadingSpinner';

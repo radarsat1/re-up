@@ -1,5 +1,6 @@
+
 import { GoogleGenAI, Type } from "@google/genai";
-import { StudyPlan, Question, GradedAnswer } from '../types';
+import { StudyPlan, Question, GradedAnswer } from './types';
 
 const studyPlanSchema = {
   type: Type.OBJECT,
@@ -51,11 +52,13 @@ const gradingSchema = {
       items: { type: Type.STRING },
     },
   },
-  required: ['grade', 'summary', 'keyConceptsMissed'],
+  required: ['grade', 'summary', 'keyConceptsMissed', 'suggestedResearchLinks'],
 };
 
-export const generateStudyPlan = async (apiKey: string, topic: string, context?: string): Promise<StudyPlan> => {
-  const ai = new GoogleGenAI({ apiKey });
+// Fix: Per coding guidelines, initialize the GenAI client once using environment variables.
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY! });
+
+export const generateStudyPlan = async (topic: string, context?: string): Promise<StudyPlan> => {
   const prompt = `Create a detailed study plan for the topic: "${topic}". The plan should be structured for interview preparation. ${context ? `Base it on the following context/job description: ${context}` : ''} The plan must have at least 3 sections and no more than 7.`;
 
   const response = await ai.models.generateContent({
@@ -72,8 +75,7 @@ export const generateStudyPlan = async (apiKey: string, topic: string, context?:
   return parsedResponse as StudyPlan;
 };
 
-export const generateQuestions = async (apiKey: string, sectionTitle: string, topic: string): Promise<Question[]> => {
-  const ai = new GoogleGenAI({ apiKey });
+export const generateQuestions = async (sectionTitle: string, topic: string): Promise<Question[]> => {
   const prompt = `Generate 5 intermediate-level interview questions about "${sectionTitle}" within the broader topic of "${topic}". The questions should require detailed, conceptual answers, not just simple definitions. Where appropriate, for scientific or mathematical topics, use LaTeX notation for formulas (e.g., \\( E = mc^2 \\)).`;
 
   const response = await ai.models.generateContent({
@@ -90,8 +92,7 @@ export const generateQuestions = async (apiKey: string, sectionTitle: string, to
   return parsedResponse as Question[];
 };
 
-export const gradeAnswer = async (apiKey: string, question: string, userAnswer: string): Promise<Omit<GradedAnswer, 'question' | 'userAnswer'>> => {
-  const ai = new GoogleGenAI({ apiKey });
+export const gradeAnswer = async (question: string, userAnswer: string): Promise<Omit<GradedAnswer, 'question' | 'userAnswer'>> => {
   const prompt = `As a senior interviewer, evaluate the following answer to an interview question.
   Question: "${question}"
   User's Answer: "${userAnswer}"
@@ -108,5 +109,7 @@ export const gradeAnswer = async (apiKey: string, question: string, userAnswer: 
   });
 
   const parsedResponse = JSON.parse(response.text);
+  // Fix: Removed explicit type assertion 'as Omit<...>' to resolve a potential TS type inference issue.
+  // The function's return type signature ensures type safety for the caller.
   return parsedResponse;
 };

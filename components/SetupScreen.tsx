@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import LoadingSpinner from './icons/LoadingSpinner';
 import { StudyPlan, SessionRecord } from '../types';
@@ -9,7 +10,6 @@ interface SetupScreenProps {
   onStart: (topic: string, context: string) => void;
   loading: boolean;
   sessionHistory: SessionRecord[];
-  onResetApiKey: () => void;
 }
 
 const gradeValueMapping: { [key: string]: number } = {
@@ -48,7 +48,7 @@ const getGradeColorClass = (grade: string) => {
   return 'bg-red-500';
 }
 
-const SetupScreen: React.FC<SetupScreenProps> = ({ studyPlans, onSelectPlan, onDeletePlan, onStart, loading, sessionHistory, onResetApiKey }) => {
+const SetupScreen: React.FC<SetupScreenProps> = ({ studyPlans, onSelectPlan, onDeletePlan, onStart, loading, sessionHistory }) => {
   const [topic, setTopic] = useState('');
   const [context, setContext] = useState('');
 
@@ -61,11 +61,6 @@ const SetupScreen: React.FC<SetupScreenProps> = ({ studyPlans, onSelectPlan, onD
 
   return (
     <div className="min-h-screen bg-slate-900 text-white flex flex-col items-center justify-center p-4 sm:p-6 lg:p-8 animate-fade-in relative">
-        <div className="absolute top-4 right-4 flex items-center gap-2 bg-slate-800/50 p-2 rounded-lg border border-slate-700">
-            <span className="text-sm text-green-400 font-mono">API Key Set</span>
-            <button onClick={onResetApiKey} className="text-xs text-slate-400 hover:text-white hover:underline">Change</button>
-        </div>
-
       <div className="w-full max-w-4xl mx-auto space-y-12">
         {/* Existing Plans List */}
         <div className="animate-slide-in-up">

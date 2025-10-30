@@ -1,10 +1,10 @@
+
 import React, { useState, useEffect } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { StudyPlan, Section, QuizSession, GradedAnswer, SessionRecord } from './types';
 import { generateStudyPlan, generateQuestions, gradeAnswer } from './services/geminiService';
 import { useLocalStorage } from './hooks/useLocalStorage';
 
-import ApiKeySetupScreen from './components/ApiKeySetupScreen';
 import SetupScreen from './components/SetupScreen';
 import StudyPlanView from './components/StudyPlanView';
 import QuizView from './components/QuizView';
@@ -14,7 +14,8 @@ import LoadingSpinner from './components/icons/LoadingSpinner';
 type AppState = 'setup' | 'study_plan' | 'quiz' | 'feedback' | 'loading_plan';
 
 function App() {
-  const [apiKey, setApiKey] = useLocalStorage<string | null>('gemini-api-key', null);
+  // Fix: Removed API key state management to adhere to coding guidelines.
+  // The API key is now exclusively handled by `geminiService` via `process.env`.
   const [appState, setAppState] = useState<AppState>('setup');
   const [loading, setLoading] = useState(false);
   
@@ -32,43 +33,28 @@ function App() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (apiKey) {
-      if (activePlan) {
-        setAppState('study_plan');
-      } else {
-        setAppState('setup');
-      }
+    // Fix: Simplified startup logic without API key check.
+    if (activePlan) {
+      setAppState('study_plan');
+    } else {
+      setAppState('setup');
     }
-  }, [activePlanId, apiKey, activePlan]);
-
-  const handleSaveApiKey = (key: string) => {
-    setApiKey(key);
-    setAppState('setup');
-  };
+  }, [activePlanId, activePlan]);
   
-  const handleResetApiKey = () => {
-    if (window.confirm('Are you sure you want to change your API key?')) {
-        setApiKey(null);
-    }
-  };
-
   const handleStart = async (topic: string, context: string) => {
-    if (!apiKey) {
-      setError("API Key is not set.");
-      return;
-    }
     setLoading(true);
     setAppState('loading_plan');
     setError(null);
     try {
-      const newPlan = await generateStudyPlan(apiKey, topic, context);
+      // Fix: Removed apiKey argument from service call.
+      const newPlan = await generateStudyPlan(topic, context);
       const planWithId = { ...newPlan, id: uuidv4() };
       setStudyPlans(prev => [...prev, planWithId]);
       setActivePlanId(planWithId.id);
       setAppState('study_plan');
     } catch (err) {
       console.error("Failed to generate study plan:", err);
-      setError("Sorry, we couldn't create a study plan. Please check your API key and try again.");
+      setError("Sorry, we couldn't create a study plan. This could be due to an invalid API key or a network issue. Please try again.");
       setAppState('setup');
     } finally {
       setLoading(false);
@@ -97,12 +83,13 @@ function App() {
   };
 
   const handleStartQuiz = async (section: Section) => {
-    if (!activePlan || !apiKey) return;
+    if (!activePlan) return;
     setLoadingQuiz(true);
     setSelectedSectionForQuiz(section);
     setError(null);
     try {
-      const questions = await generateQuestions(apiKey, section.title, activePlan.topic);
+      // Fix: Removed apiKey argument from service call.
+      const questions = await generateQuestions(section.title, activePlan.topic);
       const newSession: QuizSession = {
         id: uuidv4(),
         section,
@@ -120,7 +107,7 @@ function App() {
   };
   
   const handleFinishQuiz = async (userAnswers: string[]) => {
-    if (!activeQuizSession || !activePlan || !apiKey) return;
+    if (!activeQuizSession || !activePlan) return;
     setLoading(true);
     setGradingProgress({ current: 0, total: activeQuizSession.questions.length });
     setError(null);
@@ -131,7 +118,8 @@ function App() {
         setGradingProgress({ current: i + 1, total: activeQuizSession.questions.length });
         const question = activeQuizSession.questions[i];
         const userAnswer = userAnswers[i];
-        const gradeResult = await gradeAnswer(apiKey, question.question, userAnswer);
+        // Fix: Removed apiKey argument from service call.
+        const gradeResult = await gradeAnswer(question.question, userAnswer);
         gradedAnswers.push({
           question: question.question,
           userAnswer,
@@ -156,7 +144,8 @@ function App() {
 
     } catch (err) {
       console.error("Failed to grade answers:", err);
-      setError("An error occurred during grading. Please check your API key and try finishing the quiz again.");
+      setError("An error occurred during grading. Please try finishing the quiz again.");
+      setAppState('study_plan');
     } finally {
       setLoading(false);
       setGradingProgress(null);
@@ -165,10 +154,7 @@ function App() {
   };
   
   const renderContent = () => {
-    if (!apiKey) {
-        return <ApiKeySetupScreen onSave={handleSaveApiKey} />;
-    }
-
+    // Fix: Removed ApiKeySetupScreen and related logic.
     if (error) {
       return (
         <div className="min-h-screen bg-slate-900 text-white flex flex-col items-center justify-center p-4">
@@ -188,7 +174,7 @@ function App() {
         return <div className="min-h-screen bg-slate-900 flex flex-col gap-4 items-center justify-center text-white"><LoadingSpinner className="w-12 h-12" /><p className="text-xl">Building your study plan...</p></div>;
       
       case 'study_plan':
-        if (!activePlan) return <SetupScreen studyPlans={studyPlans} onSelectPlan={handleSelectPlan} onDeletePlan={handleDeletePlan} onStart={handleStart} loading={loading} sessionHistory={sessionHistory} onResetApiKey={handleResetApiKey} />;
+        if (!activePlan) return <SetupScreen studyPlans={studyPlans} onSelectPlan={handleSelectPlan} onDeletePlan={handleDeletePlan} onStart={handleStart} loading={loading} sessionHistory={sessionHistory} />;
         return <StudyPlanView 
           plan={activePlan} 
           sessionHistory={sessionHistory.filter(s => s.planId === activePlanId)}
@@ -238,7 +224,6 @@ function App() {
           onStart={handleStart} 
           loading={loading}
           sessionHistory={sessionHistory}
-          onResetApiKey={handleResetApiKey}
         />;
     }
   };

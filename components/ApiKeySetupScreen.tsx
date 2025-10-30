@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 
 interface ApiKeySetupScreenProps {
@@ -18,7 +19,7 @@ const ApiKeySetupScreen: React.FC<ApiKeySetupScreenProps> = ({ onSave }) => {
     <div className="min-h-screen bg-slate-900 text-white flex flex-col items-center justify-center p-4 animate-fade-in">
       <div className="w-full max-w-md mx-auto">
         <div className="bg-slate-800 rounded-2xl shadow-2xl p-8 border border-slate-700">
-          <h1 className="text-2xl font-bold text-center text-white mb-2">Welcome to Socratic Tutor</h1>
+          <h1 className="text-2xl font-bold text-center text-white mb-2">Welcome to Re-up AI</h1>
           <p className="text-center text-slate-400 mb-6">Please enter your Gemini API key to begin.</p>
           
           <form onSubmit={handleSave} className="space-y-6">

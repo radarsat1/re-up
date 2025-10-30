@@ -1,3 +1,4 @@
+
 import React, { useEffect } from 'react';
 import { SessionRecord, Section } from '../types';
 
