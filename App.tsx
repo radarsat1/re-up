@@ -14,8 +14,6 @@ import LoadingSpinner from './components/icons/LoadingSpinner';
 type AppState = 'setup' | 'study_plan' | 'quiz' | 'feedback' | 'loading_plan';
 
 function App() {
-  // Fix: Removed API key state management to adhere to coding guidelines.
-  // The API key is now exclusively handled by `geminiService` via `process.env`.
   const [appState, setAppState] = useState<AppState>('setup');
   const [loading, setLoading] = useState(false);
   
@@ -33,7 +31,6 @@ function App() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // Fix: Simplified startup logic without API key check.
     if (activePlan) {
       setAppState('study_plan');
     } else {
@@ -46,7 +43,6 @@ function App() {
     setAppState('loading_plan');
     setError(null);
     try {
-      // Fix: Removed apiKey argument from service call.
       const newPlan = await generateStudyPlan(topic, context);
       const planWithId = { ...newPlan, id: uuidv4() };
       setStudyPlans(prev => [...prev, planWithId]);
@@ -54,7 +50,7 @@ function App() {
       setAppState('study_plan');
     } catch (err) {
       console.error("Failed to generate study plan:", err);
-      setError("Sorry, we couldn't create a study plan. This could be due to an invalid API key or a network issue. Please try again.");
+      setError("Sorry, we couldn't create a study plan. This could be due to a missing/invalid API key or a network issue. Please ensure your API_KEY is configured and try again.");
       setAppState('setup');
     } finally {
       setLoading(false);
@@ -88,7 +84,6 @@ function App() {
     setSelectedSectionForQuiz(section);
     setError(null);
     try {
-      // Fix: Removed apiKey argument from service call.
       const questions = await generateQuestions(section.title, activePlan.topic);
       const newSession: QuizSession = {
         id: uuidv4(),
@@ -118,12 +113,16 @@ function App() {
         setGradingProgress({ current: i + 1, total: activeQuizSession.questions.length });
         const question = activeQuizSession.questions[i];
         const userAnswer = userAnswers[i];
-        // Fix: Removed apiKey argument from service call.
         const gradeResult = await gradeAnswer(question.question, userAnswer);
+        
+        // FIX: Solves the original TypeScript error by explicitly constructing the GradedAnswer object.
         gradedAnswers.push({
           question: question.question,
           userAnswer,
-          ...gradeResult
+          grade: gradeResult.grade,
+          summary: gradeResult.summary,
+          keyConceptsMissed: gradeResult.keyConceptsMissed,
+          suggestedResearchLinks: gradeResult.suggestedResearchLinks,
         });
       }
 
@@ -154,7 +153,6 @@ function App() {
   };
   
   const renderContent = () => {
-    // Fix: Removed ApiKeySetupScreen and related logic.
     if (error) {
       return (
         <div className="min-h-screen bg-slate-900 text-white flex flex-col items-center justify-center p-4">

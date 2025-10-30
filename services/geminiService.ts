@@ -55,10 +55,10 @@ const gradingSchema = {
   required: ['grade', 'summary', 'keyConceptsMissed', 'suggestedResearchLinks'],
 };
 
-// Fix: Per coding guidelines, initialize the GenAI client once using environment variables.
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY! });
 
 export const generateStudyPlan = async (topic: string, context?: string): Promise<StudyPlan> => {
+  // FIX: Per coding guidelines, initialize with process.env.API_KEY and remove apiKey parameter.
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY! });
   const prompt = `Create a detailed study plan for the topic: "${topic}". The plan should be structured for interview preparation. ${context ? `Base it on the following context/job description: ${context}` : ''} The plan must have at least 3 sections and no more than 7.`;
 
   const response = await ai.models.generateContent({
@@ -76,6 +76,8 @@ export const generateStudyPlan = async (topic: string, context?: string): Promis
 };
 
 export const generateQuestions = async (sectionTitle: string, topic: string): Promise<Question[]> => {
+  // FIX: Per coding guidelines, initialize with process.env.API_KEY and remove apiKey parameter.
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY! });
   const prompt = `Generate 5 intermediate-level interview questions about "${sectionTitle}" within the broader topic of "${topic}". The questions should require detailed, conceptual answers, not just simple definitions. Where appropriate, for scientific or mathematical topics, use LaTeX notation for formulas (e.g., \\( E = mc^2 \\)).`;
 
   const response = await ai.models.generateContent({
@@ -93,6 +95,8 @@ export const generateQuestions = async (sectionTitle: string, topic: string): Pr
 };
 
 export const gradeAnswer = async (question: string, userAnswer: string): Promise<Omit<GradedAnswer, 'question' | 'userAnswer'>> => {
+  // FIX: Per coding guidelines, initialize with process.env.API_KEY and remove apiKey parameter.
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY! });
   const prompt = `As a senior interviewer, evaluate the following answer to an interview question.
   Question: "${question}"
   User's Answer: "${userAnswer}"
@@ -109,7 +113,5 @@ export const gradeAnswer = async (question: string, userAnswer: string): Promise
   });
 
   const parsedResponse = JSON.parse(response.text);
-  // Fix: Removed explicit type assertion 'as Omit<...>' to resolve a potential TS type inference issue.
-  // The function's return type signature ensures type safety for the caller.
-  return parsedResponse;
+  return parsedResponse as Omit<GradedAnswer, 'question' | 'userAnswer'>;
 };
