@@ -1,35 +1,38 @@
-
 import React, { useState, useEffect } from 'react';
-import { QuizSession } from '../types';
+import { SessionRecord } from '../types';
 import LoadingSpinner from './icons/LoadingSpinner';
 
 interface QuizViewProps {
-  session: QuizSession;
+  session: SessionRecord;
   onFinishQuiz: (answers: string[]) => void;
-  onBack: () => void;
+  onUpdateAnswers: (answers: string[]) => void;
+  onBack: (answers: string[]) => void;
   loading: boolean;
   gradingProgress: { current: number; total: number } | null;
+  error: string | null;
+  onRetry: () => void;
 }
 
-const QuizView: React.FC<QuizViewProps> = ({ session, onFinishQuiz, onBack, loading, gradingProgress }) => {
+const QuizView: React.FC<QuizViewProps> = ({ session, onFinishQuiz, onUpdateAnswers, onBack, loading, gradingProgress, error, onRetry }) => {
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
-  const [answers, setAnswers] = useState<string[]>(new Array(session.questions.length).fill(''));
+  const [answers, setAnswers] = useState<string[]>(session.userAnswers);
   const [currentAnswer, setCurrentAnswer] = useState('');
 
   const currentQuestion = session.questions[currentQuestionIndex];
   const isLastQuestion = currentQuestionIndex === session.questions.length - 1;
 
   useEffect(() => {
-    setCurrentAnswer(answers[currentQuestionIndex]);
+    setCurrentAnswer(answers[currentQuestionIndex] || '');
     if ((window as any).MathJax) {
       (window as any).MathJax.typesetPromise();
     }
-  }, [currentQuestionIndex, answers, currentQuestion]);
+  }, [currentQuestionIndex, answers]);
 
   const handleNext = () => {
     const newAnswers = [...answers];
     newAnswers[currentQuestionIndex] = currentAnswer;
     setAnswers(newAnswers);
+    onUpdateAnswers(newAnswers); // Persist answers on every "next" click
 
     if (isLastQuestion) {
       onFinishQuiz(newAnswers);
@@ -38,12 +41,18 @@ const QuizView: React.FC<QuizViewProps> = ({ session, onFinishQuiz, onBack, load
     }
   };
 
+  const handleBack = () => {
+    const newAnswers = [...answers];
+    newAnswers[currentQuestionIndex] = currentAnswer;
+    onBack(newAnswers);
+  };
+
   const progressPercentage = ((currentQuestionIndex + 1) / session.questions.length) * 100;
 
   return (
     <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-4 animate-fade-in">
       <div className="w-full max-w-3xl">
-        <button onClick={onBack} className="mb-4 text-sm text-brand-primary hover:underline" disabled={loading}>
+        <button onClick={handleBack} className="mb-4 text-sm text-brand-primary hover:underline" disabled={loading}>
           &larr; Back to Study Plan
         </button>
         <div className="bg-slate-800 rounded-xl shadow-2xl p-8 border border-slate-700">
@@ -72,23 +81,41 @@ const QuizView: React.FC<QuizViewProps> = ({ session, onFinishQuiz, onBack, load
             />
           </main>
           
-          <footer className="mt-8 text-right">
-            <button
-              onClick={handleNext}
-              disabled={!currentAnswer.trim() || loading}
-              className="w-full sm:w-auto inline-flex justify-center items-center px-8 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-brand-primary hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-800 focus:ring-brand-primary disabled:bg-slate-600 disabled:cursor-not-allowed transition-colors"
-            >
-              {loading ? (
-                <div className="flex items-center space-x-2">
-                  <LoadingSpinner className="w-6 h-6" />
-                  {gradingProgress && <span>Grading {gradingProgress.current}/{gradingProgress.total}...</span>}
+          <footer className="mt-8">
+            {error ? (
+              <div className="bg-red-900/50 border border-red-700 text-red-300 p-4 rounded-lg text-left flex flex-col sm:flex-row items-center justify-between gap-4">
+                <div>
+                  <p className="font-bold">Grading Failed</p>
+                  <p className="text-sm">{error}</p>
                 </div>
-              ) : isLastQuestion ? (
-                'Finish & Grade'
-              ) : (
-                'Next Question'
-              )}
-            </button>
+                <button
+                  onClick={onRetry}
+                  disabled={loading}
+                  className="w-full sm:w-auto flex-shrink-0 inline-flex items-center justify-center px-6 py-2 bg-red-600 hover:bg-red-700 rounded-md font-semibold disabled:bg-slate-600 disabled:cursor-not-allowed"
+                >
+                  {loading ? <LoadingSpinner className="w-5 h-5" /> : 'Retry'}
+                </button>
+              </div>
+            ) : (
+              <div className="text-right">
+                <button
+                  onClick={handleNext}
+                  disabled={!currentAnswer.trim() || loading}
+                  className="w-full sm:w-auto inline-flex justify-center items-center px-8 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-brand-primary hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-800 focus:ring-brand-primary disabled:bg-slate-600 disabled:cursor-not-allowed transition-colors"
+                >
+                  {loading ? (
+                    <div className="flex items-center space-x-2">
+                      <LoadingSpinner className="w-6 h-6" />
+                      {gradingProgress && <span>Grading {gradingProgress.current}/{gradingProgress.total}...</span>}
+                    </div>
+                  ) : isLastQuestion ? (
+                    'Finish & Grade'
+                  ) : (
+                    'Next Question'
+                  )}
+                </button>
+              </div>
+            )}
           </footer>
         </div>
       </div>

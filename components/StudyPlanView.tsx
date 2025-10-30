@@ -6,7 +6,7 @@ import DownloadIcon from './icons/DownloadIcon';
 interface StudyPlanViewProps {
   plan: StudyPlan;
   sessionHistory: SessionRecord[];
-  onStartQuiz: (section: Section) => void;
+  onStartQuiz: (section: Section, forceNew?: boolean) => void;
   onReviewSession: (sessionId: string) => void;
   onBackToPlanList: () => void;
   loadingQuiz: boolean;
@@ -56,26 +56,19 @@ const getLetterGrade = (value: number | null): string => {
 
 const getAvgGrade = (gradedAnswers: SessionRecord['gradedAnswers']) => {
     if (!gradedAnswers || gradedAnswers.length === 0) return 'N/A';
-    const gradeValues: { [key: string]: number } = { 'A': 4, 'B': 3, 'C': 2, 'D': 1, 'F': 0 };
-    const total = gradedAnswers.reduce((acc, curr) => {
-        const gradeLetter = curr.grade.replace(/[+-]/, '');
-        return acc + (gradeValues[gradeLetter] || 0);
-    }, 0);
-    const avg = total / gradedAnswers.length;
-    if (avg >= 3.5) return 'A';
-    if (avg >= 2.5) return 'B';
-    if (avg >= 1.5) return 'C';
-    if (avg >= 0.5) return 'D';
-    return 'F';
+    const total = gradedAnswers.reduce((acc, curr) => acc + getNumericGrade(curr.grade), 0);
+    const avgScore = gradedAnswers.length > 0 ? total / gradedAnswers.length : 0;
+    return getLetterGrade(avgScore);
 }
 
 const StudyPlanView: React.FC<StudyPlanViewProps> = ({ plan, sessionHistory, onStartQuiz, onReviewSession, onBackToPlanList, loadingQuiz, selectedSection, onExportPlan }) => {
-  const attemptedSections = new Set(sessionHistory.map(s => s.section.title));
+  const completedSessions = sessionHistory.filter(s => s.status === 'completed');
+  const attemptedSections = new Set(completedSessions.map(s => s.section.title));
   const progressPercent = plan.sections.length > 0 ? (attemptedSections.size / plan.sections.length) * 100 : 0;
 
   const sectionScores = plan.sections
     .map(section => {
-      const sectionHistory = sessionHistory.filter(s => s.section.title === section.title);
+      const sectionHistory = completedSessions.filter(s => s.section.title === section.title);
       if (sectionHistory.length === 0) return null;
       
       const latestSession = sectionHistory[0]; // Assumes sorted by date descending
@@ -128,7 +121,7 @@ const StudyPlanView: React.FC<StudyPlanViewProps> = ({ plan, sessionHistory, onS
               <div className="w-full bg-slate-700 rounded-full h-4 mt-1">
                 <div className="bg-brand-secondary h-4 rounded-full" style={{ width: `${progressPercent}%` }}></div>
               </div>
-              <p className="text-xs text-slate-500 mt-1 text-right">{attemptedSections.size} of {plan.sections.length} topics started</p>
+              <p className="text-xs text-slate-500 mt-1 text-right">{attemptedSections.size} of {plan.sections.length} topics completed</p>
             </div>
             <div className="text-center">
                 <label className="text-sm font-medium text-slate-400">Overall Grade</label>
@@ -140,8 +133,11 @@ const StudyPlanView: React.FC<StudyPlanViewProps> = ({ plan, sessionHistory, onS
         <main className="space-y-6">
           <h2 className="text-2xl font-semibold text-slate-300 border-b border-slate-700 pb-2">Your Learning Path</h2>
           {plan.sections.map((section, index) => {
+            const inProgressSession = sessionHistory.find(
+              s => s.section.title === section.title && s.status === 'in-progress'
+            );
             const sectionHistory = sessionHistory
-              .filter(s => s.section.title === section.title)
+              .filter(s => s.section.title === section.title && s.status === 'completed')
               .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
             let overallSectionGrade: string | null = null;
@@ -153,6 +149,8 @@ const StudyPlanView: React.FC<StudyPlanViewProps> = ({ plan, sessionHistory, onS
               const avgSectionScore = sessionAvgScores.reduce((acc, curr) => acc + curr, 0) / sessionAvgScores.length;
               overallSectionGrade = getLetterGrade(avgSectionScore);
             }
+
+            const isQuizLoadingForThisSection = loadingQuiz && selectedSection?.title === section.title;
 
             return (
               <div key={index} className="bg-slate-800 p-6 rounded-lg border border-slate-700 shadow-lg transition-all animate-slide-in-up" style={{ animationDelay: `${index * 100}ms` }}>
@@ -171,13 +169,45 @@ const StudyPlanView: React.FC<StudyPlanViewProps> = ({ plan, sessionHistory, onS
                         <p className="text-xs text-slate-400">Overall Grade</p><p className="font-bold text-lg">{overallSectionGrade}</p>
                      </div>
                   )}
-                  <button
-                    onClick={() => onStartQuiz(section)}
-                    disabled={loadingQuiz}
-                    className="w-full sm:w-auto flex-shrink-0 inline-flex items-center justify-center px-6 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-brand-primary hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-800 focus:ring-brand-primary disabled:bg-slate-600 disabled:cursor-not-allowed"
-                  >
-                    {loadingQuiz && selectedSection?.title === section.title ? <LoadingSpinner className="w-5 h-5" /> : 'Start Quiz'}
-                  </button>
+
+                  <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto justify-end">
+                    {inProgressSession ? (
+                      <button
+                        onClick={() => onStartQuiz(section)}
+                        disabled={loadingQuiz}
+                        className="w-full sm:w-auto flex-shrink-0 inline-flex items-center justify-center px-6 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-brand-primary hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-800 focus:ring-brand-primary disabled:bg-slate-600 disabled:cursor-not-allowed"
+                      >
+                        {isQuizLoadingForThisSection ? <LoadingSpinner className="w-5 h-5" /> : 'Continue Quiz'}
+                      </button>
+                    ) : sectionHistory.length > 0 ? (
+                      <>
+                        <button
+                            onClick={() => onStartQuiz(section, false)}
+                            disabled={loadingQuiz}
+                            className="flex-shrink-0 inline-flex items-center justify-center px-6 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-brand-primary hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-800 focus:ring-brand-primary disabled:bg-slate-600 disabled:cursor-not-allowed"
+                        >
+                            {isQuizLoadingForThisSection ? <LoadingSpinner className="w-5 h-5" /> : 'Try Same Quiz Again'}
+                        </button>
+                        <button
+                            onClick={() => onStartQuiz(section, true)}
+                            disabled={loadingQuiz}
+                            className="flex-shrink-0 inline-flex items-center justify-center px-4 py-2 border border-slate-600 text-sm font-medium rounded-md text-white bg-slate-700 hover:bg-slate-600 focus:outline-none disabled:bg-slate-600 disabled:cursor-not-allowed"
+                            title="Start a new quiz with a fresh set of questions"
+                        >
+                            New Questions
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        onClick={() => onStartQuiz(section)}
+                        disabled={loadingQuiz}
+                        className="w-full sm:w-auto flex-shrink-0 inline-flex items-center justify-center px-6 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-brand-primary hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-800 focus:ring-brand-primary disabled:bg-slate-600 disabled:cursor-not-allowed"
+                      >
+                        {isQuizLoadingForThisSection ? <LoadingSpinner className="w-5 h-5" /> : 'Start Quiz'}
+                      </button>
+                    )}
+                  </div>
+
                 </div>
                 {sectionHistory.length > 0 && (
                   <div className="mt-4 pt-4 border-t border-slate-700">

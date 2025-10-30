@@ -16,12 +16,6 @@ export interface Question {
   topic: string;
 }
 
-export interface QuizSession {
-  id: string;
-  section: Section;
-  questions: Question[];
-}
-
 export interface GradedAnswer {
   question: string;
   userAnswer: string;
@@ -40,4 +34,5 @@ export interface SessionRecord {
   userAnswers: string[];
   gradedAnswers: GradedAnswer[];
   date: string;
+  status: 'in-progress' | 'completed';
 }

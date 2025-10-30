@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import { StudyPlan, Section, QuizSession, GradedAnswer, SessionRecord } from './types';
+import { StudyPlan, Section, GradedAnswer, SessionRecord, Question } from './types';
 import { generateStudyPlan, generateQuestions, gradeAnswer } from './services/geminiService';
 import { useLocalStorage } from './hooks/useLocalStorage';
 import { exportDataToFile, readDataFromFile, ExportData } from './services/dataService';
@@ -21,27 +21,46 @@ function App() {
   
   const [studyPlans, setStudyPlans] = useLocalStorage<StudyPlan[]>('studyPlans', []);
   const [activePlanId, setActivePlanId] = useLocalStorage<string | null>('activePlanId', null);
-  const activePlan = studyPlans.find(p => p.id === activePlanId) || null;
-  
   const [sessionHistory, setSessionHistory] = useLocalStorage<SessionRecord[]>('sessionHistory', []);
-  const [activeQuizSession, setActiveQuizSession] = useState<QuizSession | null>(null);
-  const [activeSessionRecord, setActiveSessionRecord] = useState<SessionRecord | null>(null);
+  const [activeSessionRecordId, setActiveSessionRecordId] = useLocalStorage<string | null>('activeSessionRecordId', null);
+  
+  const activePlan = studyPlans.find(p => p.id === activePlanId) || null;
+  const activeSessionRecord = sessionHistory.find(s => s.id === activeSessionRecordId) || null;
 
   const [loadingQuiz, setLoadingQuiz] = useState(false);
   const [selectedSectionForQuiz, setSelectedSectionForQuiz] = useState<Section | null>(null);
   const [gradingProgress, setGradingProgress] = useState<{current: number, total: number} | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [quizError, setQuizError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (apiKey) {
-      if (activePlan) {
+      // Priority 1: An active quiz/feedback session from a page refresh
+      if (activeSessionRecordId) {
+        const session = sessionHistory.find(s => s.id === activeSessionRecordId);
+        if (session) {
+          // Ensure its parent plan is the active one
+          if (activePlanId !== session.planId) {
+            setActivePlanId(session.planId);
+          }
+          setAppState(session.status === 'in-progress' ? 'quiz' : 'feedback');
+          return; // Exit early to prevent other logic from overriding
+        } else {
+          // Dangling session ID, clear it and proceed
+          setActiveSessionRecordId(null);
+        }
+      }
+      
+      // Priority 2: An active study plan
+      if (activePlanId) {
         setAppState('study_plan');
       } else {
+      // Default: Setup screen
         setAppState('setup');
       }
     }
-  }, [apiKey, activePlanId, activePlan]);
+  }, [apiKey, activePlanId, activeSessionRecordId, sessionHistory, setActivePlanId, setActiveSessionRecordId]);
   
   const handleStart = async (topic: string, context: string) => {
     if (!apiKey) return;
@@ -70,6 +89,10 @@ function App() {
   
   const handleDeletePlan = (planId: string) => {
     if(window.confirm('Are you sure you want to delete this study plan and all its history?')) {
+      const sessionIdsToDelete = sessionHistory.filter(s => s.planId === planId).map(s => s.id);
+      if (activeSessionRecordId && sessionIdsToDelete.includes(activeSessionRecordId)) {
+        setActiveSessionRecordId(null);
+      }
       setStudyPlans(plans => plans.filter(p => p.id !== planId));
       setSessionHistory(history => history.filter(s => s.planId !== planId));
       if (activePlanId === planId) {
@@ -81,23 +104,66 @@ function App() {
 
   const handleBackToPlanList = () => {
     setActivePlanId(null);
+    setActiveSessionRecordId(null);
     setAppState('setup');
   };
 
-  const handleStartQuiz = async (section: Section) => {
+  const handleStartQuiz = async (section: Section, forceNewQuestions = false) => {
     if (!activePlan || !apiKey) return;
+
+    // 1. Check for an existing in-progress session for this section.
+    const existingInProgressSession = sessionHistory.find(s => 
+      s.planId === activePlan.id && 
+      s.section.title === section.title && 
+      s.status === 'in-progress'
+    );
+
+    if (existingInProgressSession && !forceNewQuestions) {
+      // If found, continue that session.
+      setActiveSessionRecordId(existingInProgressSession.id);
+      setAppState('quiz');
+      return;
+    }
+
+    // No in-progress session, or user wants new questions. Create a new attempt.
     setLoadingQuiz(true);
     setSelectedSectionForQuiz(section);
     setError(null);
     try {
-      const questions = await generateQuestions(apiKey, section.title, activePlan.topic);
-      const newSession: QuizSession = {
+      let questions: Question[];
+
+      // Find the most recent previous session for this section to reuse questions from.
+      const previousSessions = sessionHistory
+        .filter(s => s.planId === activePlan.id && s.section.title === section.title)
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      
+      const latestPreviousSession = previousSessions[0];
+
+      if (forceNewQuestions || !latestPreviousSession) {
+        // Generate new questions if forced, or if no previous session exists.
+        questions = await generateQuestions(apiKey, section.title, activePlan.topic);
+      } else {
+        // Reuse questions from the most recent previous session.
+        questions = latestPreviousSession.questions;
+      }
+
+      // 4. Create a new session record for this new attempt.
+      const newSessionRecord: SessionRecord = {
         id: uuidv4(),
+        planId: activePlan.id,
+        topic: activePlan.topic,
         section,
         questions,
+        userAnswers: new Array(questions.length).fill(''),
+        gradedAnswers: [],
+        date: new Date().toISOString(),
+        status: 'in-progress',
       };
-      setActiveQuizSession(newSession);
+      
+      setSessionHistory(prev => [newSessionRecord, ...prev]);
+      setActiveSessionRecordId(newSessionRecord.id);
       setAppState('quiz');
+
     } catch (err) {
       console.error("Failed to generate questions:", err);
       setError(`Failed to start the quiz for "${section.title}". Please try again.`);
@@ -106,54 +172,79 @@ function App() {
       setSelectedSectionForQuiz(null);
     }
   };
+
+  const handleUpdateQuizAnswers = (answers: string[]) => {
+    if (!activeSessionRecordId) return;
+    setSessionHistory(prev => prev.map(s => 
+      s.id === activeSessionRecordId ? { ...s, userAnswers: answers } : s
+    ));
+  };
   
   const handleFinishQuiz = async (userAnswers: string[]) => {
-    if (!activeQuizSession || !activePlan || !apiKey) return;
-    setLoading(true);
-    setGradingProgress({ current: 0, total: activeQuizSession.questions.length });
-    setError(null);
+    if (!activeSessionRecordId || !apiKey) return;
+
+    const currentSession = sessionHistory.find(s => s.id === activeSessionRecordId);
+    if (!currentSession) return;
     
+    // Persist answers immediately to prevent data loss on grading failure.
+    handleUpdateQuizAnswers(userAnswers);
+
+    setLoading(true);
+    setQuizError(null);
+    
+    const questionsToGrade = currentSession.questions;
+    const totalQuestions = questionsToGrade.length;
+    // Start with a copy of already graded answers. This is key for retries.
+    const gradedAnswers: GradedAnswer[] = [...currentSession.gradedAnswers];
+
     try {
-      const gradedAnswers: GradedAnswer[] = [];
-      for (let i = 0; i < activeQuizSession.questions.length; i++) {
-        setGradingProgress({ current: i + 1, total: activeQuizSession.questions.length });
-        const question = activeQuizSession.questions[i];
+      // Start looping from the first ungraded answer.
+      for (let i = gradedAnswers.length; i < totalQuestions; i++) {
+        setGradingProgress({ current: i + 1, total: totalQuestions });
+        
+        const question = questionsToGrade[i];
         const userAnswer = userAnswers[i];
+        
         const gradeResult = await gradeAnswer(apiKey, question.question, userAnswer);
         
-        gradedAnswers.push({
+        const newGradedAnswer: GradedAnswer = {
           question: question.question,
           userAnswer,
           grade: gradeResult.grade,
           summary: gradeResult.summary,
           keyConceptsMissed: gradeResult.keyConceptsMissed,
           suggestedResearchLinks: gradeResult.suggestedResearchLinks,
-        });
+        };
+        
+        gradedAnswers.push(newGradedAnswer);
+
+        // Crucially, save the growing list of graded answers to state after each one.
+        // This persists the grading progress.
+        setSessionHistory(prev => prev.map(s => 
+          s.id === activeSessionRecordId 
+            ? { ...s, userAnswers, gradedAnswers: [...gradedAnswers] } 
+            : s
+        ));
       }
 
-      const newSessionRecord: SessionRecord = {
-        id: activeQuizSession.id,
-        planId: activePlan.id,
-        topic: activePlan.topic,
-        section: activeQuizSession.section,
-        questions: activeQuizSession.questions,
+      // If we get here, all questions have been graded successfully.
+      const completedSessionRecord: SessionRecord = {
+        ...currentSession,
         userAnswers,
         gradedAnswers,
-        date: new Date().toISOString(),
+        status: 'completed',
       };
       
-      setSessionHistory(prev => [newSessionRecord, ...prev]);
-      setActiveSessionRecord(newSessionRecord);
+      setSessionHistory(prev => prev.map(s => s.id === activeSessionRecordId ? completedSessionRecord : s));
       setAppState('feedback');
 
     } catch (err) {
       console.error("Failed to grade answers:", err);
-      setError("An error occurred during grading. Please try finishing the quiz again.");
-      setAppState('study_plan');
+      // The progress is already saved inside the loop, so we just show an error.
+      setQuizError("Failed to contact the AI for grading. Your progress up to this point has been saved. Please check your network connection and try again.");
     } finally {
       setLoading(false);
       setGradingProgress(null);
-      setActiveQuizSession(null);
     }
   };
   
@@ -263,11 +354,8 @@ function App() {
           sessionHistory={sessionHistory.filter(s => s.planId === activePlanId)}
           onStartQuiz={handleStartQuiz} 
           onReviewSession={(sessionId) => {
-            const record = sessionHistory.find(s => s.id === sessionId);
-            if(record) {
-              setActiveSessionRecord(record);
-              setAppState('feedback');
-            }
+            setActiveSessionRecordId(sessionId);
+            setAppState('feedback');
           }}
           onBackToPlanList={handleBackToPlanList}
           loadingQuiz={loadingQuiz}
@@ -276,13 +364,23 @@ function App() {
         />;
         
       case 'quiz':
-        if (!activeQuizSession) return <p>Error: Quiz session not found.</p>;
+        if (!activeSessionRecord) return <p>Error: Quiz session not found.</p>;
         return <QuizView 
-          session={activeQuizSession} 
+          session={activeSessionRecord} 
+          onUpdateAnswers={handleUpdateQuizAnswers}
           onFinishQuiz={handleFinishQuiz}
-          onBack={() => setAppState('study_plan')}
+          onBack={(answers) => {
+            handleUpdateQuizAnswers(answers);
+            setActiveSessionRecordId(null);
+            setQuizError(null); // Clear any quiz errors when leaving
+            setAppState('study_plan');
+          }}
           loading={loading}
           gradingProgress={gradingProgress}
+          error={quizError}
+          onRetry={() => {
+            if (activeSessionRecord) handleFinishQuiz(activeSessionRecord.userAnswers);
+          }}
         />;
         
       case 'feedback':
@@ -290,11 +388,11 @@ function App() {
         return <FeedbackView 
           sessionRecord={activeSessionRecord} 
           onFinish={() => {
-            setActiveSessionRecord(null);
+            setActiveSessionRecordId(null);
             setAppState('study_plan');
           }}
           onTryAgain={(section) => {
-            setActiveSessionRecord(null);
+            setActiveSessionRecordId(null);
             handleStartQuiz(section);
           }}
         />;
